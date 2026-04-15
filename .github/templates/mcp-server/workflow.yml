@@ -1,0 +1,27 @@
+name: Build and Push {{ServerName}} Docker Image to ACR
+
+on:
+  push:
+    paths:
+      - 'MCPServers/{{ServerName}}/**'
+      - '.github/workflows/docker-publish-{{servername}}.yml'
+      - 'Infrastructure/containerApp-{{ServerName}}.bicepparam'
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  call-docker-publish:
+    uses: ./.github/workflows/docker-publish-template.yml
+    with:
+      mcp_server: '{{ServerName}}'
+      image_name: '{{servername}}'
+      docker_context: 'MCPServers'
+    secrets: inherit
+
+  deploy-container-app:
+    needs: call-docker-publish
+    uses: ./.github/workflows/docker-deploy-containerapp-template.yml
+    with:
+      parameter_file_name: containerApp-{{ServerName}}.bicepparam
+    secrets: inherit

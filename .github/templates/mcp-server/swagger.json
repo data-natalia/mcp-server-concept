@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "{{ServerName}} MCP Server",
+    "description": "Custom connector for the {{ServerName}} MCP server via Copilot Studio",
+    "version": "1.0"
+  },
+  "servers": [
+    {
+      "url": "TODO-public-url-after-first-deploy"
+    }
+  ],
+  "paths": {
+    "/sse": {
+      "get": {
+        "summary": "MCP SSE endpoint",
+        "operationId": "McpSse",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "SSE stream"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "oauth2": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://login.microsoftonline.com/TODO-tenant-id/oauth2/v2.0/authorize",
+            "tokenUrl": "https://login.microsoftonline.com/TODO-tenant-id/oauth2/v2.0/token",
+            "scopes": {
+              "api://TODO-client-id/mcp.access": "Access {{ServerName}} MCP Server"
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "oauth2": [
+        "api://TODO-client-id/mcp.access"
+      ]
+    }
+  ]
+}

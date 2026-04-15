@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/MCPServers/">
+    <Project Path="MCPServers/Shared/Shared.csproj" />
+  </Folder>
+</Solution>
