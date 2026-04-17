@@ -24,9 +24,8 @@ param minReplicas int = 0
 
 targetScope = 'subscription'
 
-resource resourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' = {
+resource resourceGroup 'Microsoft.Resources/resourceGroups@2025-04-01' existing = {
   name: resourceGroupName
-  location: location
 }
 
 resource managedEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' existing = {
@@ -60,7 +59,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.19.0' = {
   name: 'containerAppDeployment'
   scope: resourceGroup
   params: {
-    location: location
+    location: resourceGroup.location
     name: appName
     managedIdentities: {
       userAssignedResourceIds: [

@@ -1,6 +1,5 @@
 using 'containerApp.bicep'
 
-param location = 'westeurope'
 param imageName = '{{servername}}'
 param appName = '{{servername}}'
 param environmentName = '{{EnvironmentName}}'
