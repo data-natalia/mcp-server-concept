@@ -2,6 +2,7 @@ using 'containerApp.bicep'
 
 param imageName = '{{servername}}'
 param appName = '{{servername}}'
+param acrName = '{{AcrName}}'
 param environmentName = '{{EnvironmentName}}'
 param resourceGroupName = '{{ResourceGroupName}}'
 param keyVaultSecrets = [

@@ -5,8 +5,8 @@
 .DESCRIPTION
     Creates all required files for a new MCP Server by:
     - Copying and processing auth-variant templates from .github/templates/mcp-server/
-    - Replacing {{ServerName}}, {{servername}}, {{Port}}, {{ApiConfigSection}}, {{EnvironmentName}}, {{ResourceGroupName}} tokens
-    - Creating the Infrastructure bicep parameter file
+    - Replacing {{ServerName}}, {{servername}}, {{Port}}, {{ApiConfigSection}}, {{EnvironmentName}}, {{ResourceGroupName}}, {{AcrName}} tokens
+    - Creating Infrastructure bicep parameter files for dev and prod
     - Creating the GitHub Actions workflow
     - Creating the Copilot Studio custom connector swagger file
     - Adding the project to MCPConcept.slnx
@@ -85,7 +85,8 @@ if ($AuthType -eq 'obo') {
 # Target paths (collected for rollback)
 # ---------------------------------------------------------------------------
 $serverFolder       = Join-Path $repoRoot 'MCPServers'       $ServerName
-$bicepParamFile     = Join-Path $repoRoot 'Infrastructure'   "containerApp-${ServerName}.bicepparam"
+$bicepParamFileDev  = Join-Path $repoRoot 'Infrastructure'   "containerApp-${ServerName}.dev.bicepparam"
+$bicepParamFileProd = Join-Path $repoRoot 'Infrastructure'   "containerApp-${ServerName}.prod.bicepparam"
 $workflowFile       = Join-Path $repoRoot '.github'          'workflows' "docker-publish-${serverNameLower}.yml"
 $swaggerFile        = Join-Path $repoRoot 'Copilot'          'CustomConnectors' "${ServerName}.swagger.json"
 $slnxFile           = Join-Path $repoRoot 'MCPConcept.slnx'
@@ -96,9 +97,14 @@ $launchJsonPath     = Join-Path $repoRoot '.vscode'          'launch.json'
 $createdFiles       = [System.Collections.Generic.List[string]]::new()
 $createdDirectories = [System.Collections.Generic.List[string]]::new()
 
-# Defaults copied into new server bicepparam files from Infrastructure/dev.bicepparam
-[string]$environmentNameDefault = ''
-[string]$resourceGroupNameDefault = ''
+# Defaults read from Infrastructure/dev.bicepparam and prod.bicepparam
+[string]$devEnvironmentName = ''
+[string]$devResourceGroupName = ''
+[string]$prodEnvironmentName = ''
+[string]$prodResourceGroupName = ''
+[string]$acrNameDefault = ''
+
+$prodBicepParamPath = Join-Path $repoRoot 'Infrastructure' 'prod.bicepparam'
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -124,28 +130,35 @@ function Get-BicepParamValue {
 }
 
 function Replace-Tokens {
-    param([string]$Content)
+    param(
+        [string]$Content,
+        [string]$EnvironmentName,
+        [string]$ResourceGroupName
+    )
     $Content = $Content -creplace '\{\{ServerName\}\}',       $ServerName
     $Content = $Content -creplace '\{\{servername\}\}',       $serverNameLower
     $Content = $Content -creplace '\{\{SERVERNAME\}\}',       $ServerName.ToUpper()
     $Content = $Content -creplace '\{\{Port\}\}',             $Port
     $Content = $Content -creplace '\{\{ApiConfigSection\}\}', $ApiConfigSection
-    $Content = $Content -creplace '\{\{EnvironmentName\}\}',  $environmentNameDefault
-    $Content = $Content -creplace '\{\{ResourceGroupName\}\}', $resourceGroupNameDefault
+    $Content = $Content -creplace '\{\{EnvironmentName\}\}',  $EnvironmentName
+    $Content = $Content -creplace '\{\{ResourceGroupName\}\}', $ResourceGroupName
+    $Content = $Content -creplace '\{\{AcrName\}\}',          $acrNameDefault
     return $Content
 }
 
 function Write-TemplateFile {
     param(
         [string]$TemplateName,
-        [string]$DestinationPath
+        [string]$DestinationPath,
+        [string]$EnvironmentName = $devEnvironmentName,
+        [string]$ResourceGroupName = $devResourceGroupName
     )
     $templatePath = Join-Path $templateDir $TemplateName
     if (-not (Test-Path $templatePath)) {
         throw "Template not found: $templatePath"
     }
     $content = Get-Content -Path $templatePath -Raw -Encoding UTF8
-    $content = Replace-Tokens -Content $content
+    $content = Replace-Tokens -Content $content -EnvironmentName $EnvironmentName -ResourceGroupName $ResourceGroupName
 
     $destDir = Split-Path -Parent $DestinationPath
     if (-not (Test-Path $destDir)) {
@@ -194,8 +207,12 @@ if (Test-Path $serverFolder) {
     Write-Error "Server folder already exists: $serverFolder"
     exit 1
 }
-if (Test-Path $bicepParamFile) {
-    Write-Error "Bicep parameter file already exists: $bicepParamFile"
+if (Test-Path $bicepParamFileDev) {
+    Write-Error "Bicep parameter file already exists: $bicepParamFileDev"
+    exit 1
+}
+if (Test-Path $bicepParamFileProd) {
+    Write-Error "Bicep parameter file already exists: $bicepParamFileProd"
     exit 1
 }
 if (Test-Path $workflowFile) {
@@ -220,15 +237,19 @@ if (-not (Test-Path $templateDir)) {
 }
 
 try {
-    $environmentNameDefault = Get-BicepParamValue -FilePath $devBicepParamPath -ParamName 'containerAppsEnvName'
-    $resourceGroupNameDefault = Get-BicepParamValue -FilePath $devBicepParamPath -ParamName 'resourceGroupName'
+    $devEnvironmentName   = Get-BicepParamValue -FilePath $devBicepParamPath  -ParamName 'containerAppsEnvName'
+    $devResourceGroupName = Get-BicepParamValue -FilePath $devBicepParamPath  -ParamName 'resourceGroupName'
+    $acrNameDefault       = Get-BicepParamValue -FilePath $devBicepParamPath  -ParamName 'acrName'
+    $prodEnvironmentName  = Get-BicepParamValue -FilePath $prodBicepParamPath -ParamName 'containerAppsEnvName'
+    $prodResourceGroupName = Get-BicepParamValue -FilePath $prodBicepParamPath -ParamName 'resourceGroupName'
 } catch {
-    Write-Error "Failed to read default environmentName/resourceGroupName from $devBicepParamPath. $_"
+    Write-Error "Failed to read default values from parameter files. $_"
     exit 1
 }
 
-Write-Host "  Env name   : $environmentNameDefault" -ForegroundColor Gray
-Write-Host "  RG name    : $resourceGroupNameDefault" -ForegroundColor Gray
+Write-Host "  Dev env    : $devEnvironmentName  ($devResourceGroupName)" -ForegroundColor Gray
+Write-Host "  Prod env   : $prodEnvironmentName  ($prodResourceGroupName)" -ForegroundColor Gray
+Write-Host "  ACR name   : $acrNameDefault" -ForegroundColor Gray
 
 # ---------------------------------------------------------------------------
 # Main
@@ -262,12 +283,14 @@ try {
 
     # --- Infrastructure ---
     Write-Host ''
-    Write-Host 'Creating infrastructure file...' -ForegroundColor Yellow
-    switch ($AuthType) {
-        'obo'    { Write-TemplateFile 'bicepparam.Obo.bicepparam'    $bicepParamFile }
-        'apikey' { Write-TemplateFile 'bicepparam.ApiKey.bicepparam' $bicepParamFile }
-        'noauth' { Write-TemplateFile 'bicepparam.NoAuth.bicepparam' $bicepParamFile }
+    Write-Host 'Creating infrastructure files (dev + prod)...' -ForegroundColor Yellow
+    $templateName = switch ($AuthType) {
+        'obo'    { 'bicepparam.Obo.bicepparam' }
+        'apikey' { 'bicepparam.ApiKey.bicepparam' }
+        'noauth' { 'bicepparam.NoAuth.bicepparam' }
     }
+    Write-TemplateFile $templateName $bicepParamFileDev
+    Write-TemplateFile $templateName $bicepParamFileProd -EnvironmentName $prodEnvironmentName -ResourceGroupName $prodResourceGroupName
 
     # --- CI/CD workflow ---
     Write-Host ''
@@ -333,7 +356,7 @@ try {
     }
     Write-Host ''
     Write-Host 'Next steps:' -ForegroundColor Cyan
-    Write-Host "  1. Review Infrastructure/containerApp-${ServerName}.bicepparam (environmentName and resourceGroupName were prefilled from Infrastructure/dev.bicepparam)"
+    Write-Host "  1. Review Infrastructure/containerApp-${ServerName}.dev.bicepparam and Infrastructure/containerApp-${ServerName}.prod.bicepparam (prefilled from dev.bicepparam and prod.bicepparam respectively)"
     switch ($AuthType) {
         'obo' {
             Write-Host "  2. Create Key Vault secrets: ${serverNameLower}clientid, ${serverNameLower}clientsecret, ${serverNameLower}tenantid"

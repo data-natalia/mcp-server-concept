@@ -100,8 +100,9 @@ Open `Infrastructure/containerApp-{ServerName}.bicepparam` and replace every `TO
 
 | Parameter | Description |
 |---|---|
-| `environmentName` | The short environment name from `/setup-deployment` (e.g. `mymcpenv`) |
-| `resourceGroupName` | The resource group from `/setup-deployment` (e.g. `rg-mymcpenv`) |
+| `environmentName` | The environment name from `/setup-deployment` for the target environment (e.g. `mymcpdev` for dev, `mymcpprod` for prod) |
+| `acrName` | The shared ACR name from `/setup-deployment` (e.g. `mymcpacr`) |
+| `resourceGroupName` | The resource group for the target environment from `/setup-deployment` (e.g. `rg-mymcpdev`) |
 | `EntraIdAuth__PublicUrl` | Leave as `TODO` for now — fill in after the first successful deploy |
 | **apikey only:** `EntraIdAuth__TenantId` | Your Entra ID tenant ID (obo and noauth read this from Key Vault instead) |
 | **apikey / noauth:** `{ApiConfigSection}__BaseUrl` | Base URL of the upstream API |
@@ -197,7 +198,7 @@ The server starts on `http://localhost:{Port}` with stateless transport disabled
 
 ### 7. Push to main and complete the deployment
 
-Push to the `main` branch. The generated workflow (`.github/workflows/docker-publish-{servername}.yml`) triggers automatically, builds the Docker image using the `MCPServers/` folder as context, pushes it to `{EnvironmentName}.azurecr.io/{servername}:latest`, and deploys the Container App.
+Push to the `main` branch. The generated workflow (`.github/workflows/docker-publish-{servername}.yml`) triggers automatically, builds the Docker image using the `MCPServers/` folder as context, pushes it to `{AcrName}.azurecr.io/{servername}:latest`, and deploys the Container App.
 
 ### 8. Update the public URL (after first deploy)
 
@@ -240,13 +241,13 @@ The workflow path filter in `.github/workflows/docker-publish-{servername}.yml` 
 
 ### `AcrPull` permission denied when deploying Container App
 
-The Container App uses the User-Assigned Managed Identity (`umi-{EnvironmentName}`) to pull images from ACR. If it was not assigned the `AcrPull` role during `main.bicep` deployment, assign it manually:
+The Container Apps Environment uses its system-assigned managed identity to pull images from ACR. If `AcrPull` was not assigned during `main.bicep` deployment, assign it manually (replace `{EnvironmentName}` with the dev or prod environment name and `{AcrName}` with the shared ACR name):
 
 ```
 az role assignment create \
-  --assignee $(az identity show --name umi-{EnvironmentName} --resource-group rg-{EnvironmentName} --query principalId -o tsv) \
+  --assignee $(az containerapp env show --name {EnvironmentName} --resource-group rg-{EnvironmentName} --query "identity.principalId" -o tsv) \
   --role AcrPull \
-  --scope $(az acr show --name {EnvironmentName} --query id -o tsv)
+  --scope $(az acr show --name {AcrName} --query id -o tsv)
 ```
 
 ### Key Vault secret not found at runtime

@@ -6,6 +6,16 @@ on:
       parameter_file_name:
         required: true
         type: string
+      environment:
+        required: false
+        type: string
+        default: dev
+        description: "'dev' or 'prod'"
+      image_tag:
+        required: false
+        type: string
+        default: latest
+        description: "The image tag to deploy"
 
 jobs:
   deployment:
@@ -28,9 +38,10 @@ jobs:
         with:
           type: deployment
           operation: create
-          name: Development
+          name: ${{ inputs.environment == 'prod' && 'Production' || 'Development' }}
           location: westeurope
           scope: subscription
           subscription-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
           template-file: ./Infrastructure/containerApp.bicep
           parameters-file: ./Infrastructure/${{ inputs.parameter_file_name }}
+          parameters: '{"imageTag": "${{ inputs.image_tag }}"}'

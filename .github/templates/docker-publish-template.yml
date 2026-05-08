@@ -13,33 +13,42 @@ on:
         required: false
         type: string
         default: MCPServers/${{ inputs.mcp_server }}
+      environment:
+        required: true
+        type: string
+        description: "'dev' or 'prod'"
+    outputs:
+      image_tag:
+        description: "The image tag that was built (dev) or promoted (prod)"
+        value: ${{ jobs.build-and-push.outputs.image_tag }}
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      image_tag: ${{ steps.context.outputs.image_tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Set ACR_NAME based on branch
-        id: set_acr
+      - name: Set deployment context
+        id: context
         run: |
-          if [ "$GITHUB_REF_NAME" = "main" ]; then
-            echo "ACR_NAME=${{ vars.ACR_NAME_PROD }}" >> $GITHUB_ENV
+          if [ "${{ inputs.environment }}" = "prod" ]; then
+            IMAGE_TAG="${GITHUB_REF##*/}"
           else
-            echo "ACR_NAME=${{ vars.ACR_NAME_DEV }}" >> $GITHUB_ENV
+            IMAGE_TAG="latest"
           fi
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "source_image_tag=sha-${GITHUB_SHA}" >> $GITHUB_OUTPUT
+
+      - name: Set ACR_NAME env var
+        run: echo "ACR_NAME=${{ vars.ACR_NAME }}" >> $GITHUB_ENV
 
       - name: Set REGISTRY env var
         run: echo "REGISTRY=${ACR_NAME}.azurecr.io" >> $GITHUB_ENV
-
-      - name: Set IMAGE_NAME
-        run: echo "IMAGE_NAME=${{ inputs.image_name }}" >> $GITHUB_ENV
-
-      - name: Set IMAGE_TAG to latest
-        run: echo "IMAGE_TAG=latest" >> $GITHUB_ENV
 
       - name: Log in to Azure
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
@@ -53,10 +62,30 @@ jobs:
           username: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientId }}
           password: ${{ fromJson(secrets.AZURE_CREDENTIALS).clientSecret }}
 
-      - name: Build Docker image
+      - name: Build and push Docker image
+        if: ${{ inputs.environment == 'dev' }}
         run: |
-          docker build -f ${{ inputs.docker_context }}/${{ inputs.mcp_server }}/Dockerfile -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG ${{ inputs.docker_context }}
+          docker build \
+            -f ${{ inputs.docker_context }}/${{ inputs.mcp_server }}/Dockerfile \
+            -t $REGISTRY/${{ inputs.image_name }}:latest \
+            -t $REGISTRY/${{ inputs.image_name }}:sha-${GITHUB_SHA} \
+            ${{ inputs.docker_context }}
+          docker push $REGISTRY/${{ inputs.image_name }}:latest
+          docker push $REGISTRY/${{ inputs.image_name }}:sha-${GITHUB_SHA}
 
-      - name: Push Docker image to ACR
+      - name: Retag dev image for production
+        if: ${{ inputs.environment == 'prod' && steps.context.outputs.image_tag != steps.context.outputs.source_image_tag }}
         run: |
-          docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+          az acr import \
+            --name $ACR_NAME \
+            --source $REGISTRY/${{ inputs.image_name }}:${{ steps.context.outputs.source_image_tag }} \
+            --image ${{ inputs.image_name }}:${{ steps.context.outputs.image_tag }} \
+            --force
+
+      - name: Validate production image exists in ACR
+        if: ${{ inputs.environment == 'prod' }}
+        run: |
+          az acr repository show \
+            --name $ACR_NAME \
+            --image ${{ inputs.image_name }}:${{ steps.context.outputs.image_tag }} \
+            --output none

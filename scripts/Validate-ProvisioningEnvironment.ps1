@@ -1,5 +1,11 @@
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory = $false)]
+    [switch]$CheckGitHubCli,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SkipKeyVaultCheck
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -44,6 +50,18 @@ try {
         Fail 'Azure CLI not found. Install Azure CLI first: https://learn.microsoft.com/cli/azure/install-azure-cli'
     }
 
+    if ($CheckGitHubCli) {
+        $null = & gh --version 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Fail 'GitHub CLI not found. Install GitHub CLI first: https://cli.github.com/'
+        }
+
+        $null = & gh auth status 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Fail 'GitHub CLI is not authenticated. Run gh auth login first.'
+        }
+    }
+
     $currentSubscriptionName = Invoke-AzTsv 'account show --query "name" -o tsv'
     if ([string]::IsNullOrWhiteSpace($currentSubscriptionName)) {
         Fail 'No active Azure login found. Run az login first.'
@@ -77,14 +95,16 @@ try {
         Fail 'You do not have Application Developer, Application Administrator, or Global Administrator role in Entra ID. Contact your Azure AD administrator.'
     }
 
-    $keyVaultsRaw = Invoke-AzTsv 'keyvault list --query "[].name" -o tsv'
     $availableKeyVaults = @()
-    if (-not [string]::IsNullOrWhiteSpace($keyVaultsRaw)) {
-        $availableKeyVaults = $keyVaultsRaw -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() }
-    }
+    if (-not $SkipKeyVaultCheck) {
+        $keyVaultsRaw = Invoke-AzTsv 'keyvault list --query "[].name" -o tsv'
+        if (-not [string]::IsNullOrWhiteSpace($keyVaultsRaw)) {
+            $availableKeyVaults = $keyVaultsRaw -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() }
+        }
 
-    if ($availableKeyVaults.Count -eq 0) {
-        Fail "No Key Vaults found in subscription $currentSubscriptionId. Run /setup-deployment first."
+        if ($availableKeyVaults.Count -eq 0) {
+            Fail "No Key Vaults found in subscription $currentSubscriptionId. Run /setup-deployment first."
+        }
     }
 
     $suggestedEnvironmentName = ''

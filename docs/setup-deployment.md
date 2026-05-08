@@ -2,7 +2,7 @@
 
 This guide explains what the `/setup-deployment` Copilot agent command does and walks through each step.
 
-Run it once per deployment ring to provision the shared Azure infrastructure and wire it to GitHub Actions.
+Run it **once** to provision the full shared Azure infrastructure — a dedicated registry resource group plus separate dev and prod environment resource groups — and wire everything to GitHub Actions.
 
 ---
 
@@ -10,18 +10,22 @@ Run it once per deployment ring to provision the shared Azure infrastructure and
 
 `/setup-deployment` provisions the shared resources that every MCP server in this repository depends on:
 
-| Resource | Purpose |
-|---|---|
-| Resource Group | Container for all environment resources |
-| Azure Container Registry (ACR) | Stores the Docker images built by CI/CD |
-| Container Apps Environment | Runs all MCP server containers |
-| Log Analytics Workspace | Collects logs from all containers |
-| Application Insights | Distributed traces and metrics (linked to Log Analytics) |
-| Key Vault | Stores per-server secrets (API keys, client credentials) |
-| Storage Account (ADLS Gen2) | Optional blob export destination for MCP tools |
-| User-Assigned Managed Identity | Used by Container Apps to pull secrets from Key Vault |
+| Resource | Resource Group | Purpose |
+|---|---|---|
+| Azure Container Registry (ACR) | `rg-{AcrName}` (shared) | Stores the Docker images built by CI\CD — shared by dev and prod |
+| Container Apps Environment | `rg-{DevEnv}` / `rg-{ProdEnv}` | Runs all MCP server containers (one per environment) |
+| Log Analytics Workspace | `rg-{DevEnv}` / `rg-{ProdEnv}` | Collects logs from all containers |
+| Application Insights | `rg-{DevEnv}` / `rg-{ProdEnv}` | Distributed traces and metrics |
+| Key Vault | `rg-{DevEnv}` / `rg-{ProdEnv}` | Stores per-server secrets |
+| Storage Account (ADLS Gen2) | `rg-{DevEnv}` / `rg-{ProdEnv}` | Optional blob export destination |
+| User-Assigned Managed Identity | `rg-{DevEnv}` / `rg-{ProdEnv}` | Grants containers access to Key Vault |
 
-After provisioning, it creates a service principal with the right roles and stores its credentials as GitHub Actions secrets and variables so CI/CD can push images and deploy containers without any manual token management.
+This results in **three resource groups**:
+- `rg-{AcrName}` — shared Container Registry (created once, reused by both environments)
+- `rg-{DevEnv}` — all dev environment resources
+- `rg-{ProdEnv}` — all prod environment resources
+
+After provisioning, the agent creates a service principal with the right roles and stores its credentials as GitHub Actions secrets and variables so CI/CD can push images and deploy containers without any manual token management.
 
 ---
 
@@ -29,19 +33,21 @@ After provisioning, it creates a service principal with the right roles and stor
 
 | Input | Rules | Example |
 |---|---|---|
-| `EnvironmentName` | 5–22 characters, **lowercase letters and digits only**, no hyphens or underscores. Used directly as the ACR name, Key Vault name, Container Apps environment name, and Log Analytics name. A `st` prefix is prepended for the Storage Account name (`st{EnvironmentName}` — max 24 chars total). | `mymcpenv` |
+| `DevEnvironmentName` | 5–22 characters, **lowercase letters and digits only**, no hyphens or underscores. Used as the Key Vault name, Container Apps environment name, Log Analytics name, and Storage Account prefix for the dev environment. | `mymcpdev` |
+| `ProdEnvironmentName` | Same rules as dev name, must be different. Used for the prod environment resources. | `mymcpprod` |
+| `AcrName` | 5–50 alphanumeric characters. Globally unique — used directly as the Azure Container Registry name. A `rg-` prefix is used for the registry resource group. | `mymcpacr` |
 | `Location` | Any valid Azure region identifier. | `westeurope` |
 | `SubscriptionId` | The GUID of the Azure subscription to deploy into. | `xxxxxxxx-...` |
 
-### Why the naming constraint?
+### Why the naming constraints?
 
-The same short name is used as-is for several resource types that each have different naming rules. The most restrictive intersection is:
+Each environment name is used for Key Vault, Container Apps environment, Log Analytics, and Storage Account (with a `st` prefix). The most restrictive intersection is:
 
-- **ACR**: 5–50 alphanumeric (minimum 5 chars)
-- **Storage Account**: 3–24 lowercase alphanumeric (max 24 chars, but `st` + name is used here, so max 22 chars for the base name)
+- **Storage Account**: max 24 chars — `st` + name, so max 22 chars for the base
 - **Key Vault**: 3–24 alphanumeric and hyphens
+- **Container Apps environment**: 2–32 alphanumeric and hyphens
 
-Using 5–22 lowercase alphanumeric characters satisfies all constraints simultaneously.
+Using 5–22 lowercase alphanumeric characters satisfies all constraints simultaneously. The ACR name has a wider range (5–50 alphanumeric) and is independent of the environment names.
 
 ---
 
@@ -49,18 +55,24 @@ Using 5–22 lowercase alphanumeric characters satisfies all constraints simulta
 
 ### Step 1 — Collect inputs
 
-The agent asks for `EnvironmentName`, `Location`, and `SubscriptionId`, then validates them before proceeding.
+The agent asks for `DevEnvironmentName`, `ProdEnvironmentName`, `AcrName`, `Location`, and `SubscriptionId`, then validates them before proceeding.
 
 All other resource names are derived automatically:
 
 | Bicep parameter | Value |
 |---|---|
-| `acrName` | `{EnvironmentName}` |
-| `containerAppsEnvName` | `{EnvironmentName}` |
-| `keyVaultName` | `{EnvironmentName}` |
-| `logAnalyticsName` | `{EnvironmentName}` |
-| `storageAccountName` | `st{EnvironmentName}` |
-| `resourceGroupName` | `rg-{EnvironmentName}` |
+| `acrName` | `{AcrName}` |
+| `acrResourceGroupName` | `rg-{AcrName}` |
+| Dev `containerAppsEnvName` | `{DevEnvironmentName}` |
+| Dev `keyVaultName` | `{DevEnvironmentName}` |
+| Dev `logAnalyticsName` | `{DevEnvironmentName}` |
+| Dev `storageAccountName` | `st{DevEnvironmentName}` |
+| Dev `resourceGroupName` | `rg-{DevEnvironmentName}` |
+| Prod `containerAppsEnvName` | `{ProdEnvironmentName}` |
+| Prod `keyVaultName` | `{ProdEnvironmentName}` |
+| Prod `logAnalyticsName` | `{ProdEnvironmentName}` |
+| Prod `storageAccountName` | `st{ProdEnvironmentName}` |
+| Prod `resourceGroupName` | `rg-{ProdEnvironmentName}` |
 
 ### Step 2 — Verify prerequisites
 
@@ -76,74 +88,72 @@ az account set --subscription {SubscriptionId}
 
 Ensures subsequent `az` commands target the correct subscription.
 
-### Step 4 — Update Infrastructure/dev.bicepparam
+### Step 4 — Update Infrastructure/dev.bicepparam and Infrastructure/prod.bicepparam
 
-The agent writes your resolved values into `Infrastructure/dev.bicepparam`. This file is committed to the repository and serves as the permanent record of the shared environment configuration.
+The agent writes your resolved values into both `Infrastructure/dev.bicepparam` and `Infrastructure/prod.bicepparam`. Both files are committed to the repository and serve as the permanent record of the shared environment configuration. Both reference the same `acrName` and `acrResourceGroupName` to point at the shared registry.
 
 ### Step 5 — Deploy shared infrastructure
 
+The GitHub Actions workflow (`.github/workflows/deploy-bicep.yml`) deploys `Infrastructure/main.bicep` **twice** on every push to the `Infrastructure/` folder: once with `dev.bicepparam` and once with `prod.bicepparam`. This creates or updates all three resource groups in a single CI/CD run.
+
+On first run, the dev deployment creates the shared ACR resource group and the ACR itself; the prod deployment reuses the same ACR and adds the prod Container Apps environment identity as an `AcrPull` assignee. Both identity role assignments are idempotent — re-running either deployment never removes the other environment’s access.
+
+You can also run a deployment manually:
+
 ```
 az deployment sub create \
-  --name mcp-shared-env \
+  --name mcp-dev \
   --location {Location} \
   --template-file Infrastructure/main.bicep \
   --parameters Infrastructure/dev.bicepparam
+
+az deployment sub create \
+  --name mcp-prod \
+  --location {Location} \
+  --template-file Infrastructure/main.bicep \
+  --parameters Infrastructure/prod.bicepparam
 ```
 
-Subscription-scope Bicep deployment. Takes 3–8 minutes on first run. Uses [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) for all resources.
+Each deployment takes 3–8 minutes on first run. Uses [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) for all resources.
 
 ### Step 6 — Create service principal
 
 ```
-az ad sp create-for-rbac --name "sp-mcp-{EnvironmentName}" --json-auth --output json
+az ad sp create-for-rbac --name "sp-mcp-{AcrName}" --json-auth --output json
 ```
 
-Creates a service principal with client credentials. The `--json-auth` flag (previously `--sdk-auth` in older Azure CLI versions) produces the JSON structure that `azure/login` and `azure/docker-login` GitHub Actions expect.
+Creates a service principal with client credentials. The `--json-auth` flag produces the JSON structure that `azure/login` and `azure/docker-login` GitHub Actions expect.
 
-The agent captures the JSON **into a shell variable without printing it to the terminal**. This prevents the client secret from appearing in terminal history or VS Code output panels.
+The agent captures the JSON **into a shell variable without printing it to the terminal**.
 
-### Step 7 — Assign AcrPush on the Container Registry
-
-```
-az role assignment create \
-  --assignee {clientId} \
-  --role AcrPush \
-  --scope {acrResourceId}
-```
-
-Grants the service principal permission to push Docker images to the ACR. This is the only permission needed for image builds.
-
-### Step 8 — Assign Contributor on the subscription
+### Step 7 — Assign Owner on the subscription
 
 ```
 az role assignment create \
   --assignee {clientId} \
-  --role Contributor \
+  --role Owner \
   --scope /subscriptions/{SubscriptionId}
 ```
 
-Grants the service principal permission to create and update Container App resources via Bicep deployments. Scoped to the subscription so it can create resource groups and deployments.
+Grants the service principal permission to create resource groups, deploy Bicep templates, and assign roles during deployment (the Bicep template grants `AcrPull` and `AcrPush` inline using `deployer().objectId`).
 
-### Step 9 — Store credentials in GitHub
+### Step 8 — Store credentials in GitHub
 
-This is the most security-sensitive step. The service principal JSON (containing the client secret) is piped **directly** from the shell variable to the GitHub CLI:
+The service principal JSON is piped **directly** from the shell variable to the GitHub CLI:
 
 ```
 echo $SP_JSON | gh secret set AZURE_CREDENTIALS --app actions
 ```
 
-**Why piping is secure:** The credentials travel from the in-memory shell variable, through a pipe, directly to the GitHub CLI which encrypts and uploads them. They are never written to disk, never printed to the terminal, and never appear in shell history. The `SP_JSON` variable is cleared immediately after.
-
-The ACR name is also stored as a repository variable for both environments:
+The shared ACR name is stored as a repository variable for both environments (both point to the same registry):
 
 ```
-gh variable set ACR_NAME_DEV --body "{EnvironmentName}"
-gh variable set ACR_NAME_PROD --body "{EnvironmentName}"
+gh variable set ACR_NAME --body "{AcrName}"
 ```
 
-The CI/CD template selects the right ACR automatically: branches named `main` use `ACR_NAME_PROD`, all other branches use `ACR_NAME_DEV`.
+The CI/CD docker-publish template uses the shared `ACR_NAME` variable to push images to the registry for all environments.
 
-### Step 10 — Completion checklist
+### Step 9 — Completion checklist
 
 The agent prints a summary of everything that was done and prompts you to run `/new-mcp-server` next.
 
@@ -151,9 +161,9 @@ The agent prints a summary of everything that was done and prompts you to run `/
 
 ## Troubleshooting
 
-### `az deployment sub create` fails with AuthorizationFailed
+### Deployment fails with AuthorizationFailed
 
-Your account needs the `Owner` or `Contributor` role at subscription scope to create resource groups and assign roles. Check with:
+Your account needs the `Owner` role at subscription scope to create resource groups and assign roles. Check with:
 
 ```
 az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv) --scope /subscriptions/{SubscriptionId} -o table
@@ -161,7 +171,7 @@ az role assignment list --assignee $(az ad signed-in-user show --query id -o tsv
 
 ### Key Vault name is already taken
 
-Key Vault names are globally unique. If `{EnvironmentName}` is taken, choose a different environment name. Soft-deleted Key Vaults also reserve the name — you may need to purge a previously deleted vault with:
+Key Vault names are globally unique. Choose a different dev or prod environment name. Soft-deleted Key Vaults also reserve the name — you may need to purge a previously deleted vault with:
 
 ```
 az keyvault purge --name {EnvironmentName} --location {Location}
@@ -169,11 +179,11 @@ az keyvault purge --name {EnvironmentName} --location {Location}
 
 ### ACR name is already taken
 
-ACR names are globally unique. Choose a different environment name.
+ACR names are globally unique. Choose a different `AcrName`.
 
 ### Role assignment fails with `PrincipalNotFound`
 
-Service principal creation propagates asynchronously in Entra ID. Wait 30–60 seconds after Step 6 and retry the role assignment step.
+Service principal creation propagates asynchronously in Entra ID. Wait 30–60 seconds and retry.
 
 ### `gh secret set` fails
 
@@ -181,4 +191,4 @@ Ensure the GitHub CLI is authenticated to the correct account and organisation w
 
 ### Container Apps Environment takes too long
 
-The Container Apps Environment provisioning can take up to 10 minutes on first creation. The `az deployment sub create` command waits automatically — do not cancel it.
+The Container Apps Environment provisioning can take up to 10 minutes on first creation. The deployment command waits automatically — do not cancel it.

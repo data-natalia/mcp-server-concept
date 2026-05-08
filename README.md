@@ -49,13 +49,10 @@ GitHub Copilot / Copilot Studio
    Upstream API  (Dynamics 365, Power BI, custom …)
 ```
 
-**Shared infrastructure (one per environment):**
-- Azure Container Registry — stores Docker images
-- Container Apps Environment — hosts all MCP server containers
-- Azure Key Vault — stores per-server secrets
-- Log Analytics Workspace + Application Insights — observability
-- Azure Storage Account — optional export target for large tool responses
-- User-Assigned Managed Identity — grants containers access to Key Vault
+**Shared infrastructure (three resource groups):**
+- `rg-{AcrName}` — Azure Container Registry, shared by dev and prod
+- `rg-{DevEnv}` — dev environment: Container Apps Environment, Key Vault, Log Analytics, Application Insights, Storage Account, User-Assigned Managed Identity
+- `rg-{ProdEnv}` — prod environment: same resources as dev, fully isolated
 
 **Per server:**
 - Container App
@@ -103,17 +100,17 @@ This guided prompt will:
 - Collect your environment name, location, and subscription ID
 - Deploy all shared Azure infrastructure (`Infrastructure/main.bicep`)
 - Create a service principal and store its credentials as the `AZURE_CREDENTIALS` GitHub secret
-- Set the `ACR_NAME_DEV` and `ACR_NAME_PROD` Actions variables
+- Set the `ACR_NAME` Actions variable (shared registry used by all environments)
 
 See [docs/setup-deployment.md](docs/setup-deployment.md) for a detailed walkthrough.
 
-### 3. Commit and push `Infrastructure/dev.bicepparam`
+### 3. Commit and push `Infrastructure/dev.bicepparam` and `Infrastructure/prod.bicepparam`
 
-The setup prompt writes your environment values into this file. Commit it:
+The setup prompt writes your environment values into both files. Commit them:
 
 ```bash
-git add Infrastructure/dev.bicepparam
-git commit -m "chore: configure deployment environment"
+git add Infrastructure/dev.bicepparam Infrastructure/prod.bicepparam
+git commit -m "chore: configure deployment environments"
 git push
 ```
 

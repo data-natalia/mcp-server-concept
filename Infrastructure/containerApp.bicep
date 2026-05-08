@@ -13,6 +13,12 @@ param appName string
 @description('The name of the image to deploy')
 param imageName string
 
+@description('The tag of the image to deploy')
+param imageTag string = 'latest'
+
+@description('The name of the shared Azure Container Registry (without .azurecr.io)')
+param acrName string
+
 @description('Array of secrets to be used in the container app')
 param keyVaultSecrets array
 
@@ -69,7 +75,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.19.0' = {
     containers: [
       {
         name: environmentName
-        image: '${environmentName}.azurecr.io/${imageName}:latest'
+        image: '${acrName}.azurecr.io/${imageName}:${imageTag}'
         resources: {
           cpu: '0.25'
           memory: '0.5Gi'
@@ -79,7 +85,7 @@ module containerApp 'br/public:avm/res/app/container-app:0.19.0' = {
     ]
     registries: [
       {
-        server: '${environmentName}.azurecr.io'
+        server: '${acrName}.azurecr.io'
         identity: 'system-environment'
       }
     ]

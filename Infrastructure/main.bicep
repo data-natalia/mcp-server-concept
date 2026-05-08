@@ -1,8 +1,11 @@
 @description('The Azure region to deploy resources into')
 param location string
 
-@description('The name of the Azure Container Registry')
+@description('The name of the Azure Container Registry (shared across environments)')
 param acrName string
+
+@description('The name of the resource group for the shared Container Registry')
+param acrResourceGroupName string
 
 @description('The name of the Log Analytics Workspace')
 param logAnalyticsName string
@@ -13,7 +16,7 @@ param containerAppsEnvName string
 @description('The name of the Key Vault')
 param keyVaultName string
 
-@description('The name of the resource group to deploy into')
+@description('The name of the environment resource group to deploy into')
 param resourceGroupName string
 
 @description('The name of the Storage Account')
@@ -26,9 +29,14 @@ resource resourceGroup 'Microsoft.Resources/resourceGroups@2025-03-01' = {
   location: location
 }
 
+resource acrResourceGroup 'Microsoft.Resources/resourceGroups@2025-03-01' = {
+  name: acrResourceGroupName
+  location: location
+}
+
 module acr 'br/public:avm/res/container-registry/registry:0.9.1' = {
   name: 'acr'
-  scope: resourceGroup
+  scope: acrResourceGroup
   params: {
     name: acrName
     location: location
