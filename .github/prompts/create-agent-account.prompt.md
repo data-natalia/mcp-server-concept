@@ -33,6 +33,7 @@ If successful, capture:
 - `currentSubscriptionId = prereq.currentSubscriptionId`
 - `directoryRoleNames = prereq.directoryRoleNames`
 - `availableKeyVaults = prereq.availableKeyVaults`
+- `suggestedEnvironmentName = prereq.suggestedEnvironmentName`
 
 Print:
 > ✅ Azure CLI authenticated to subscription: **{currentSubscriptionName}** ({currentSubscriptionId})
@@ -43,21 +44,33 @@ Print:
 Print:
 > ✅ Found {count} Key Vault(s) in current subscription
 
+If `suggestedEnvironmentName` is non-empty, print:
+> ℹ️ Detected environment name from configuration: **{suggestedEnvironmentName}**
+
 ---
 
 ## Step 1 — Collect inputs
 
-Call the `vscode_askQuestions` tool with exactly these four questions. Build the options for KeyVaultName from `availableKeyVaults` and mark the first one as recommended:
+Call the `vscode_askQuestions` tool with exactly these five questions. Build the options for KeyVaultName from `availableKeyVaults` and mark the first one as recommended:
 
-**Naming Convention**: Agent app names follow the pattern `agent-{ServerName}` and match an MCP app named `mcp-{ServerName}` (created by `/create-mcp-account`).
+**Naming Convention**: Agent app names follow the pattern `agent-{ServerName}-{Environment}` and match an MCP app named `mcp-{ServerName}-{Environment}` (created by `/create-mcp-account`).
 
 ```json
 {
   "questions": [
     {
       "header": "ServerName",
-      "question": "Server name (e.g. WeatherForecast, PartnerCenter). Agent will be named agent-{ServerName} and must match the mcp-{ServerName} app from /create-mcp-account.",
+      "question": "Server name (e.g. WeatherForecast, PartnerCenter). Agent will be named agent-{ServerName}-{Environment} and must match the mcp-{ServerName}-{Environment} app from /create-mcp-account.",
       "allowFreeformInput": true
+    },
+    {
+      "header": "Environment",
+      "question": "Environment name appended to the app display name (e.g. agent-WeatherForecast-dev). Use the suggested environment if shown above.",
+      "allowFreeformInput": true,
+      "options": [
+        { "label": "dev", "recommended": true },
+        { "label": "prod" }
+      ]
     },
     {
       "header": "McpAppId",
@@ -106,6 +119,7 @@ After the user answers:
 
 Validate the inputs:
 - **ServerName** must be PascalCase or alphanumeric with no spaces. If it does not match `^[A-Za-z0-9]+$`, stop and ask the user to correct it.
+- **Environment** must be lowercase alphanumeric or hyphens, 2–20 characters. If it does not match `^[a-z0-9-]{2,20}$`, stop and ask the user to correct it.
 - **McpAppId** must be a valid GUID. If it does not, stop and ask the user to correct it.
 - **KeyVaultName** must match `^[a-z0-9-]{3,24}$`. If it does not, stop and ask the user to correct it.
 
@@ -116,7 +130,7 @@ Validate the inputs:
 Run:
 
 ```powershell
-& ".\scripts\New-EntraAppRegistration.ps1" -ServerName "{ServerName}" -McpAppId "{McpAppId}" -KeyVaultName "{KeyVaultName}" -SubscriptionId "{subscriptionId}" -AccountType "agent"
+& ".\scripts\New-EntraAppRegistration.ps1" -ServerName "{ServerName}" -McpAppId "{McpAppId}" -KeyVaultName "{KeyVaultName}" -SubscriptionId "{subscriptionId}" -AccountType "agent" -Environment "{Environment}"
 ```
 
 The script returns JSON. Parse it into `result`.
@@ -139,7 +153,7 @@ Do not print secret values.
 Print:
 
 ```
-✅ App registration 'agent-{ServerName}' configured
+✅ App registration 'agent-{ServerName}-{Environment}' configured
 ✅ Enterprise Application for '{agentAppId}' verified
 ✅ Description set
 ✅ Microsoft Graph delegated permissions added (User.Read, offline_access, profile)

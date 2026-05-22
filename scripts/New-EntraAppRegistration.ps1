@@ -18,7 +18,10 @@ param(
 
     [Parameter(Mandatory = $false)]
     [ValidatePattern('^[0-9a-fA-F-]{36}$')]
-    [string]$McpAppId
+    [string]$McpAppId,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Environment = 'dev'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -119,7 +122,7 @@ try {
     }
 
     $namePrefix = if ($AccountType -eq 'agent') { 'agent' } else { 'mcp' }
-    $appDisplayName = "$namePrefix-$ServerName"
+    $appDisplayName = "$namePrefix-$ServerName-$Environment"
 
     $null = Invoke-AzTsv "account set --subscription $SubscriptionId"
 

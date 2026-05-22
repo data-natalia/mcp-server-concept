@@ -124,21 +124,7 @@ Copies the three GitHub Actions workflow templates from `.github/templates/` to 
 | `docker-publish-template.yml` | Builds and pushes Docker images to ACR |
 | `docker-deploy-containerapp-template.yml` | Updates Container App revisions |
 
-### Step 6 — Completion checklist
-
-The agent prints a summary of every action completed:
-
-```
-✅ Infrastructure/dev.bicepparam updated
-✅ Infrastructure/prod.bicepparam updated
-✅ Service principal sp-mcp-{AcrName} created or updated
-✅ Owner role assigned to SP on subscription {SubscriptionId}
-✅ AZURE_CREDENTIALS secret set in GitHub Actions
-✅ ACR_NAME variable set to {AcrName}
-✅ Workflow templates copied to .github/workflows/
-```
-
-### Step 7 — Commit and push to trigger deployment
+### Step 6 — Commit and push to trigger deployment
 
 ```
 git add Infrastructure/dev.bicepparam Infrastructure/prod.bicepparam .github/workflows/
@@ -151,6 +137,21 @@ This pushes to your own repository (`{RepoNameWithOwner}`), not the source repos
 On first run, the dev deployment creates the shared ACR and its resource group; the prod deployment reuses the same ACR and adds the prod Container Apps identity as an `AcrPull` assignee. Both role assignments are idempotent — re-running never removes the other environment's access.
 
 Each deployment takes 3–8 minutes on first run. Uses [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/) for all resources.
+
+### Step 7 — Completion checklist
+
+The agent prints a summary of every action completed:
+
+```
+✅ Infrastructure/dev.bicepparam updated
+✅ Infrastructure/prod.bicepparam updated
+✅ Service principal sp-mcp-{AcrName} created or updated
+✅ Owner role assigned to SP on subscription {SubscriptionId}
+✅ AZURE_CREDENTIALS secret set in GitHub Actions
+✅ ACR_NAME variable set to {AcrName}
+✅ Workflow templates copied to .github/workflows/
+✅ Changes committed and pushed to main branch
+```
 
 #### Manual deployment option
 

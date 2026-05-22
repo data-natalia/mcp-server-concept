@@ -51,7 +51,7 @@ If `suggestedEnvironmentName` is non-empty, print:
 
 ## Step 1 — Collect inputs
 
-Call the `vscode_askQuestions` tool with exactly these three questions. Build the options for KeyVaultName from `availableKeyVaults` and mark the first one as recommended:
+Call the `vscode_askQuestions` tool with exactly these four questions. Build the options for KeyVaultName from `availableKeyVaults` and mark the first one as recommended:
 
 ```json
 {
@@ -60,6 +60,15 @@ Call the `vscode_askQuestions` tool with exactly these three questions. Build th
       "header": "ServerName",
       "question": "Server name for the MCP account (e.g. WeatherForecast, PartnerCenter). Used in app display name and Key Vault secret names.",
       "allowFreeformInput": true
+    },
+    {
+      "header": "Environment",
+      "question": "Environment name appended to the app display name (e.g. mcp-WeatherForecast-dev). Use the suggested environment if shown above.",
+      "allowFreeformInput": true,
+      "options": [
+        { "label": "dev", "recommended": true },
+        { "label": "prod" }
+      ]
     },
     {
       "header": "KeyVaultName",
@@ -104,6 +113,9 @@ After the user answers:
 Validate **ServerName**:
 - Must be PascalCase or alphanumeric with no spaces. If it does not match `^[A-Za-z0-9]+$`, stop and ask the user to correct it.
 
+Validate **Environment**:
+- Must be lowercase alphanumeric or hyphens, 2–20 characters. If it does not match `^[a-z0-9-]{2,20}$`, stop and ask the user to correct it.
+
 Validate **KeyVaultName**:
 - Must match `^[a-z0-9-]{3,24}$`. If it does not, stop and ask the user to correct it.
 
@@ -114,7 +126,7 @@ Validate **KeyVaultName**:
 Run:
 
 ```powershell
-& ".\scripts\New-EntraAppRegistration.ps1" -ServerName "{ServerName}" -KeyVaultName "{KeyVaultName}" -SubscriptionId "{subscriptionId}" -AccountType "mcp"
+& ".\scripts\New-EntraAppRegistration.ps1" -ServerName "{ServerName}" -KeyVaultName "{KeyVaultName}" -SubscriptionId "{subscriptionId}" -AccountType "mcp" -Environment "{Environment}"
 ```
 
 The script returns JSON. Parse it into `result`.
@@ -137,7 +149,7 @@ Do not print secret values.
 Print:
 
 ```
-✅ App registration 'mcp-{ServerName}' configured
+✅ App registration 'mcp-{ServerName}-{Environment}' configured
 ✅ Enterprise Application for '{appId}' verified
 ✅ Application ID URI: api://{appId}
 ✅ API scope api://{appId}/mcp.tools exposed

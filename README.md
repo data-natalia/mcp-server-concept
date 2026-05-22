@@ -115,6 +115,19 @@ This guided prompt scaffolds all files for a new server — C# project, Dockerfi
 
 See [docs/new-mcp-server.md](docs/new-mcp-server.md) for a detailed walkthrough.
 
+### 4. Run `/create-mcp-account` to create the MCP app registration
+
+```
+/create-mcp-account
+```
+
+This guided prompt will:
+- Create an app registration for the MCP server (or reuse an existing one)
+- Expose an API scope for delegated access
+- Create a client secret and store all credentials in Key Vault
+
+See [docs/manage-app-registrations.md](docs/manage-app-registrations.md) for details.
+
 ### 4. Implement the service and tool
 
 Fill in the generated service and tool classes with real logic:
