@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/MCPServers/">
+    <Project Path="MCPServers/CurrER/CurrER.csproj" />
     <Project Path="MCPServers/Shared/Shared.csproj" />
   </Folder>
 </Solution>

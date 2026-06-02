@@ -1,0 +1,59 @@
+name: Build and Push CurrER Docker Image to ACR
+
+on:
+  push:
+    paths:
+      - 'MCPServers/CurrER/**'
+      - '.github/workflows/docker-publish-currer.yml'
+      - 'Infrastructure/containerApp-CurrER.dev.bicepparam'
+    branches:
+      - main
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish-dev:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    uses: ./.github/workflows/docker-publish-template.yml
+    with:
+      mcp_server: 'CurrER'
+      image_name: 'currer'
+      docker_context: 'MCPServers'
+      environment: dev
+    secrets: inherit
+
+  deploy-dev:
+    needs: publish-dev
+    if: needs.publish-dev.result == 'success'
+    concurrency:
+      group: azure-deploy-dev
+      cancel-in-progress: false
+    uses: ./.github/workflows/docker-deploy-containerapp-template.yml
+    with:
+      parameter_file_name: containerApp-CurrER.dev.bicepparam
+      environment: dev
+    secrets: inherit
+
+  publish-prod:
+    if: github.event_name == 'release' && startsWith(github.ref, 'refs/tags/v') && startsWith(github.event.release.name, 'CurrER')
+    uses: ./.github/workflows/docker-publish-template.yml
+    with:
+      mcp_server: 'CurrER'
+      image_name: 'currer'
+      docker_context: 'MCPServers'
+      environment: prod
+    secrets: inherit
+
+  deploy-prod:
+    needs: publish-prod
+    if: needs.publish-prod.result == 'success'
+    concurrency:
+      group: azure-deploy-prod
+      cancel-in-progress: false
+    uses: ./.github/workflows/docker-deploy-containerapp-template.yml
+    with:
+      parameter_file_name: containerApp-CurrER.prod.bicepparam
+      environment: prod
+      image_tag: ${{ needs.publish-prod.outputs.image_tag }}
+    secrets: inherit

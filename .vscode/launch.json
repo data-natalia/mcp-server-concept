@@ -1,4 +1,15 @@
 {
   "version": "0.2.0",
-  "configurations": []
+  "configurations": [
+    {
+      "name": "CurrER",
+      "type": "dotnet",
+      "request": "launch",
+      "projectPath": "${workspaceFolder}/MCPServers/CurrER/CurrER.csproj",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "preLaunchTask": "build CurrER"
+    }
+  ]
 }

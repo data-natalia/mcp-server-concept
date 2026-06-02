@@ -1,3 +1,9 @@
 {
-  "servers": {}
+	"servers": {
+		"DungeonsAndDragons": {
+			"url": "HTTP://localhost:4547",
+			"type": "http"
+		}
+	},
+	"inputs": []
 }

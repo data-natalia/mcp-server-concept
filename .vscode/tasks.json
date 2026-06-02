@@ -1,4 +1,15 @@
 {
   "version": "2.0.0",
-  "tasks": []
+  "tasks": [
+    {
+      "label": "build CurrER",
+      "command": "dotnet",
+      "type": "process",
+      "args": [
+        "build",
+        "${workspaceFolder}/MCPServers/CurrER/CurrER.csproj"
+      ],
+      "problemMatcher": "$msCompile"
+    }
+  ]
 }
