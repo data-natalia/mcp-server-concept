@@ -39,7 +39,7 @@ module acr 'br/public:avm/res/container-registry/registry:0.9.1' = {
   scope: acrResourceGroup
   params: {
     name: acrName
-    location: location
+    location: 'westeurope'
     acrAdminUserEnabled: true
     acrSku: 'Basic'
     publicNetworkAccess: 'Enabled'
