@@ -31,7 +31,7 @@ resource resourceGroup 'Microsoft.Resources/resourceGroups@2025-03-01' = {
 
 resource acrResourceGroup 'Microsoft.Resources/resourceGroups@2025-03-01' = {
   name: acrResourceGroupName
-  location: location
+  location: 'westeurope'
 }
 
 module acr 'br/public:avm/res/container-registry/registry:0.9.1' = {
