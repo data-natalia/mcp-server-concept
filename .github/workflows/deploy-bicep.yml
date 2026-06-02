@@ -1,0 +1,101 @@
+name: Deploy Bicep Template
+
+on:
+  push:
+    branches: 
+      - main
+    paths:
+      - 'Infrastructure/**'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  deploy-dev:
+    name: "Deploy Dev environment"
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    concurrency:
+      group: azure-deploy-dev
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Azure Login
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Dev environment
+        uses: azure/bicep-deploy@4d5dc29bf04d05546dd5df9c665c54b9c5213207 # v2.2.0
+        with:
+            type: deployment
+            operation: create
+            name: Development
+            location: westeurope
+            scope: subscription
+            subscription-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+            template-file: ./Infrastructure/main.bicep
+            parameters-file: ./Infrastructure/dev.bicepparam
+
+  check-prod-deployed:
+    name: "Check if Prod environment exists"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      exists: ${{ steps.check.outputs.exists }}
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Check if Prod deployment exists
+        id: check
+        run: |
+          if az deployment sub show \
+            --name Production \
+            --subscription ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }} \
+            > /dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+  deploy-prod:
+    name: "Deploy Prod environment"
+    needs: [check-prod-deployed]
+    if: github.event_name == 'release' || needs.check-prod-deployed.outputs.exists == 'false'
+    concurrency:
+      group: azure-deploy-prod
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Azure Login
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Prod environment
+        uses: azure/bicep-deploy@4d5dc29bf04d05546dd5df9c665c54b9c5213207 # v2.2.0
+        with:
+            type: deployment
+            operation: create
+            name: Production
+            location: westeurope
+            scope: subscription
+            subscription-id: ${{ fromJson(secrets.AZURE_CREDENTIALS).subscriptionId }}
+            template-file: ./Infrastructure/main.bicep
+            parameters-file: ./Infrastructure/prod.bicepparam
